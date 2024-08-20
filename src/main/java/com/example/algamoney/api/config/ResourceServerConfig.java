@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -21,7 +22,9 @@ import org.springframework.security.oauth2.server.authorization.config.annotatio
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.util.StringUtils;
 
+import com.example.algamoney.api.config.property.AlgamoneyApiProperty;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
 
@@ -31,6 +34,8 @@ import com.nimbusds.jose.proc.SecurityContext;
 @EnableMethodSecurity(prePostEnabled = true)
 public class ResourceServerConfig {
 	
+	@Autowired
+	private AlgamoneyApiProperty algamoneyApiProperty;
 	
 	@Bean
 	public SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception{
@@ -41,10 +46,26 @@ public class ResourceServerConfig {
 			.authorizeHttpRequests(authorize ->{ 
     		authorize.requestMatchers("/categorias").permitAll();
     		authorize.anyRequest().authenticated();
-    	});
+    	})
+		.logout(
+				logoutConfig -> {
+					logoutConfig.logoutSuccessHandler(
+							(httpServletRequest, httpServletResponse, authentication) -> {
+								String returnTo = httpServletRequest.getParameter("returnTo");
+
+								if (!StringUtils.hasText(returnTo)) {
+									returnTo = algamoneyApiProperty.getSeguranca().getAuthServerUrl();
+								}
+
+								httpServletResponse.setStatus(302);
+								httpServletResponse.sendRedirect(returnTo);
+							}
+					);
 	   	
-	   return http.formLogin(Customizer.withDefaults()).build();
+				}
 		
+			);
+	   return http.formLogin(Customizer.withDefaults()).build();
 	}
 	
 	
@@ -74,10 +95,8 @@ public class ResourceServerConfig {
 					.map(SimpleGrantedAuthority::new)
 					.collect(Collectors.toList()));
 			
-			return grantedAuthorities;
-			
+			return grantedAuthorities;	
 		});
-		
 		
 		return jwtAuthenticationConverter;
 	}
