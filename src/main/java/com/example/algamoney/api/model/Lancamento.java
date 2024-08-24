@@ -45,6 +45,7 @@ public class Lancamento {
 	
 	private String observacao;
 	
+	@NotNull
 	@Enumerated(EnumType.STRING)
 	private TipoLancamento tipo;
 	
