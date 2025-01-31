@@ -1,6 +1,6 @@
 package com.example.algamoney.api.resource;
 
-import java.util.List;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.EmptyResultDataAccessException;
@@ -45,16 +45,16 @@ public class PessoaResource {
 	
 	//Adiciona uma pessoa
 	@PostMapping
-	@PreAuthorize("hasAuthority('ROLE_CADASTRAR_PESSOA') and hasAuthority('SCOPE_write')")
+	@PreAuthorize("hasAuthority('ROLE_CADASTRAR_PESSOA')")
 	public ResponseEntity<Pessoa> criar(@Valid @RequestBody Pessoa pessoa, HttpServletResponse response) {
-		Pessoa pessoaSalva = pessoaRepository.save(pessoa);
+		Pessoa pessoaSalva = pessoaService.salvar(pessoa);
 		publisher.publishEvent(new RecursoCriadoEvent(this, response, pessoaSalva.getCodigo()));
 		return ResponseEntity.status(HttpStatus.CREATED).body(pessoaSalva);
 	}
 	
 	//Busca a pessoa pelo codigo
 	@GetMapping("/{codigo}")
-	@PreAuthorize("hasAuthority('ROLE_PESQUISAR_PESSOA') and hasAuthority('SCOPE_read')")
+	@PreAuthorize("hasAuthority('ROLE_PESQUISAR_PESSOA')")
 	public ResponseEntity<Pessoa> buscarPeloCodigo(@PathVariable Long codigo){
 		return pessoaRepository.findById(codigo).map(pessoa -> ResponseEntity.ok().body(pessoa)).orElse(ResponseEntity.notFound().build());
 	}
@@ -69,7 +69,7 @@ public class PessoaResource {
 	//Deletar pessoa pelo código
 	@DeleteMapping("/{codigo}")
 	@ResponseStatus(HttpStatus.NO_CONTENT)
-	@PreAuthorize("hasAuthority('ROLE_REMOVER_PESSOA') and hasAuthority('SCOPE_write')")
+	@PreAuthorize("hasAuthority('ROLE_REMOVER_PESSOA')")
 	public void remover(@PathVariable Long codigo) {
 		Pessoa pessoaADeletar = pessoaRepository.findById(codigo)
 				.orElseThrow(() -> new EmptyResultDataAccessException(1)); 
@@ -79,7 +79,7 @@ public class PessoaResource {
 	
 	//Atualizando pessoa
 	@PutMapping("/{codigo}")
-	@PreAuthorize("hasAuthority('ROLE_CADASTRAR_PESSOA') and hasAuthority('SCOPE_write')")
+	@PreAuthorize("hasAuthority('ROLE_CADASTRAR_PESSOA')")
 	public Pessoa atualizar(@PathVariable Long codigo, @Valid @RequestBody Pessoa pessoa){
 		Pessoa pessoaSalva = pessoaService.atualizar(codigo, pessoa);
 		return this.pessoaRepository.save(pessoaSalva);
@@ -88,7 +88,7 @@ public class PessoaResource {
 	//Atualizando pessoa pelo código
 	@PutMapping("/{codigo}/ativo")
 	@ResponseStatus(HttpStatus.NO_CONTENT)
-	@PreAuthorize("hasAuthority('ROLE_CADASTRAR_PESSOA') and hasAuthority('SCOPE_write')")
+	@PreAuthorize("hasAuthority('ROLE_CADASTRAR_PESSOA')")
 	public void atualizarPropriedadeAtivo(@PathVariable Long codigo, @RequestBody Boolean ativo) {
 		pessoaService.atualizarPropriedadeAtivo(codigo, ativo);
 	}
