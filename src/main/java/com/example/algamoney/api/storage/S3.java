@@ -15,20 +15,12 @@ import org.springframework.web.multipart.MultipartFile;
 import com.amazonaws.AmazonServiceException;
 import com.amazonaws.SdkClientException;
 import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.model.AccessControlList;
-import com.amazonaws.services.s3.model.DeleteObjectRequest;
-import com.amazonaws.services.s3.model.GroupGrantee;
-import com.amazonaws.services.s3.model.ObjectMetadata;
-import com.amazonaws.services.s3.model.ObjectTagging;
-import com.amazonaws.services.s3.model.Permission;
-import com.amazonaws.services.s3.model.PutObjectRequest;
-import com.amazonaws.services.s3.model.SetObjectTaggingRequest;
-import com.amazonaws.services.s3.model.Tag;
+import com.amazonaws.services.s3.model.*;
+
 import com.example.algamoney.api.config.property.AlgamoneyApiProperty;
 
 @Component
 public class S3 {
-	
 	
 	private static final Logger logger = LoggerFactory.getLogger(S3.class);
 	
@@ -38,71 +30,78 @@ public class S3 {
 	@Autowired
 	private AmazonS3 amazonS3;
 	
-	
 	public String salvarTemporariamente(MultipartFile arquivo) {
-		
-		AccessControlList acl = new AccessControlList();
-		acl.grantPermission(GroupGrantee.AllUsers, Permission.Read);
-
-		ObjectMetadata objectMetadata = new ObjectMetadata();
-		objectMetadata.setContentType(arquivo.getContentType());
-		objectMetadata.setContentLength(arquivo.getSize());
-
-		String nomeUnico = gerarNomeUnico(arquivo.getOriginalFilename());
-		
 		try {
+			// Definir permissões públicas de leitura
+			AccessControlList acl = new AccessControlList();
+			acl.grantPermission(GroupGrantee.AllUsers, Permission.Read);
+
+			// Definir metadados do arquivo
+			ObjectMetadata objectMetadata = new ObjectMetadata();
+			objectMetadata.setContentType(arquivo.getContentType());
+			objectMetadata.setContentLength(arquivo.getSize());
+
+			// Gerar um nome único para o arquivo
+			String nomeUnico = gerarNomeUnico(arquivo.getOriginalFilename());
+
+			// Criar e configurar a requisição de upload
 			PutObjectRequest putObjectRequest = new PutObjectRequest(
 					property.getS3().getBucket(),
 					nomeUnico,
 					arquivo.getInputStream(),
-					objectMetadata)
-					.withAccessControlList(acl);
+					objectMetadata);
+					
+
+			// Adicionar tag de expiração
 			putObjectRequest.setTagging(new ObjectTagging(
 					Arrays.asList(new Tag("expirar", "true"))));
-			
+
+			// Enviar o arquivo ao S3
 			amazonS3.putObject(putObjectRequest);
-			
-			if(logger.isDebugEnabled()) {
-				logger.debug("Arquivo {} enviado com sucesso para o S3.",
-						arquivo.getOriginalFilename());
-			}
-			
+
+			logger.info("✅ Arquivo '{}' enviado com sucesso para o S3.", arquivo.getOriginalFilename());
+
 			return nomeUnico;
-			
+
 		} catch (IOException e) {
+			logger.error("❌ Erro ao enviar arquivo para o S3: {}", e.getMessage(), e);
 			throw new RuntimeException("Problemas ao tentar enviar o arquivo ao S3", e);
 		}
 	}
 
-	
 	public String configurarUrl(String objeto) {
-		return "\\\\" + property.getS3().getBucket() +
-				".s3.amazonaws.com/" + objeto;
-	};
-	
-	public void salvar(String objeto) {
-		
-		SetObjectTaggingRequest setObjectTaggingRequest = new SetObjectTaggingRequest(
-				property.getS3().getBucket(), 
-				objeto, 
-				new ObjectTagging(Collections.emptyList()));
-		
-		amazonS3.setObjectTagging(setObjectTaggingRequest);
-		
+		return "https://" + property.getS3().getBucket() + ".s3.amazonaws.com/" + objeto;
 	}
 	
-	
+	public void salvar(String objeto) {
+		try {
+			// Remover tags para que o objeto não expire automaticamente
+			SetObjectTaggingRequest setObjectTaggingRequest = new SetObjectTaggingRequest(
+					property.getS3().getBucket(), 
+					objeto, 
+					new ObjectTagging(Collections.emptyList()));
+			
+			amazonS3.setObjectTagging(setObjectTaggingRequest);
+			logger.info("✅ Arquivo '{}' salvo permanentemente no S3.", objeto);
+
+		} catch (AmazonServiceException e) {
+			logger.error("❌ Erro ao salvar objeto no S3: {}", e.getMessage(), e);
+		}
+	}
+
 	public void remover(String objeto) {
-	    try {
-	        DeleteObjectRequest deleteObjectRequest = new DeleteObjectRequest(
-	            property.getS3().getBucket(), objeto);
-	        amazonS3.deleteObject(deleteObjectRequest);
-	        System.out.println("Objeto removido com sucesso: " + objeto);
-	    } catch (AmazonServiceException e) {
-	        System.err.println("Erro ao remover objeto do S3: " + e.getMessage());
-	    } catch (SdkClientException e) {
-	        System.err.println("Erro de conexão com a AWS: " + e.getMessage());
-	    }
+		try {
+			DeleteObjectRequest deleteObjectRequest = new DeleteObjectRequest(
+				property.getS3().getBucket(), objeto);
+			
+			amazonS3.deleteObject(deleteObjectRequest);
+			logger.info("✅ Objeto '{}' removido com sucesso do S3.", objeto);
+			
+		} catch (AmazonServiceException e) {
+			logger.error("❌ Erro ao remover objeto do S3: {}", e.getMessage(), e);
+		} catch (SdkClientException e) {
+			logger.error("❌ Erro de conexão com a AWS ao tentar remover '{}': {}", objeto, e.getMessage(), e);
+		}
 	}
 
 	public void substituir(String objetoAntigo, String objetoNovo) {
@@ -111,19 +110,9 @@ public class S3 {
 		}
 		
 		salvar(objetoNovo);
-		
 	}
 
 	private String gerarNomeUnico(String originalFileName) {
-		
 		return UUID.randomUUID().toString() + "_" + originalFileName;
 	}
-
-
-	
-
-	
-
-	
-	
 }

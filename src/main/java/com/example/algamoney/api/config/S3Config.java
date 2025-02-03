@@ -3,6 +3,8 @@ package com.example.algamoney.api.config;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
@@ -20,44 +22,55 @@ import com.example.algamoney.api.config.property.AlgamoneyApiProperty;
 @Configuration
 public class S3Config {
 
+    private static final Logger logger = LoggerFactory.getLogger(S3Config.class);
+
     @Autowired
     private AlgamoneyApiProperty property;
 
     @Bean
     public AmazonS3 amazonS3() {
+        try {
+            // Obtendo credenciais do AWS S3
+            AWSCredentials credentials = new BasicAWSCredentials(
+                    property.getS3().getAccessKeyId(), property.getS3().getSecretAccessKey());
 
-        AWSCredentials credentials = new BasicAWSCredentials(
-                property.getS3().getAccessKeyId(), property.getS3().getSecretAccessKey());
+            // Criando cliente S3
+            AmazonS3 amazonS3 = AmazonS3ClientBuilder.standard()
+                    .withCredentials(new AWSStaticCredentialsProvider(credentials))
+                    .withRegion(Regions.SA_EAST_1)
+                    .build();
 
-        AmazonS3 amazonS3 = AmazonS3ClientBuilder.standard()
-                .withCredentials(new AWSStaticCredentialsProvider(credentials))
-                .withRegion(Regions.SA_EAST_1)
-                .build();
+            String bucketName = property.getS3().getBucket();
 
-        String bucketName = property.getS3().getBucket();
+            // Verificando se o bucket já existe
+            if (amazonS3.doesBucketExistV2(bucketName)) {
+                logger.info("✅ O bucket '{}' já existe.", bucketName);
+            } else {
+                logger.info("⏳ Criando o bucket '{}'...", bucketName);
+                amazonS3.createBucket(new CreateBucketRequest(bucketName));
+                logger.info("🎉 Bucket '{}' criado com sucesso!", bucketName);
 
-        if (amazonS3.doesBucketExistV2(bucketName)) {
-            System.out.println("✅ O bucket '" + bucketName + "' já existe.");
-        } else {
-            System.out.println("⏳ Criando o bucket '" + bucketName + "'...");
-            amazonS3.createBucket(new CreateBucketRequest(bucketName));
-            System.out.println("🎉 Bucket '" + bucketName + "' criado com sucesso!");
+                // Criando regra de expiração de arquivos temporários
+                BucketLifecycleConfiguration.Rule regraExpiracao =
+                        new BucketLifecycleConfiguration.Rule()
+                                .withId("Regra de expiração de arquivos temporários")
+                                .withFilter(new LifecycleFilter(
+                                        new LifecycleTagPredicate(new Tag("expirar", "true"))))
+                                .withExpirationInDays(1)
+                                .withStatus(BucketLifecycleConfiguration.ENABLED);
 
-            BucketLifecycleConfiguration.Rule regraExpiracao =
-                    new BucketLifecycleConfiguration.Rule()
-                            .withId("Regra de expiração de arquivos temporários")
-                            .withFilter(new LifecycleFilter(
-                                    new LifecycleTagPredicate(new Tag("expirar", "true"))))
-                            .withExpirationInDays(1)
-                            .withStatus(BucketLifecycleConfiguration.ENABLED);
+                BucketLifecycleConfiguration configuration = new BucketLifecycleConfiguration()
+                        .withRules(regraExpiracao);
 
-            BucketLifecycleConfiguration configuration = new BucketLifecycleConfiguration()
-                    .withRules(regraExpiracao);
+                amazonS3.setBucketLifecycleConfiguration(bucketName, configuration);
+                logger.info("🛠️ Configuração de expiração aplicada ao bucket '{}'.", bucketName);
+            }
 
-            amazonS3.setBucketLifecycleConfiguration(bucketName, configuration);
-            System.out.println("🛠️ Configuração de expiração aplicada ao bucket '" + bucketName + "'.");
+            return amazonS3;
+
+        } catch (Exception e) {
+            logger.error("❌ Erro ao configurar o Amazon S3: {}", e.getMessage(), e);
+            throw new RuntimeException("Falha ao configurar o Amazon S3", e);
         }
-
-        return amazonS3;
     }
 }
